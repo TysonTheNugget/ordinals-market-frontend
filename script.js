@@ -1,5 +1,6 @@
 let connectedAddress = null;
 const backendUrl = 'https://ordinals-market-backend.onrender.com';
+const appUrl = 'https://ordinals-market-frontend.vercel.app'; // Your Vercel URL
 
 async function connectWallet() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -11,14 +12,19 @@ async function connectWallet() {
       connectedAddress = accounts[0];
       alert('Connected: ' + connectedAddress);
     } else {
-      // Mobile: Use deeplink
+      // Mobile: Use deeplink with redirect
       const response = await fetch(`${backendUrl}/connect`);
       if (!response.ok) {
         throw new Error('Failed to fetch deeplink');
       }
       const { deeplink, nonce } = await response.json();
       window.location.href = deeplink;
-      setTimeout(() => pollForAddress(nonce), 5000);
+      // Store nonce for polling
+      localStorage.setItem('unisatNonce', nonce);
+      // Poll after delay
+      if (isMobile) {
+        setTimeout(() => pollForAddress(nonce), 5000);
+      }
       return;
     }
     document.getElementById('listForm').style.display = 'block';
@@ -33,13 +39,14 @@ async function pollForAddress(nonce) {
   try {
     const response = await fetch(`${backendUrl}/address/${nonce}`);
     if (!response.ok) {
-      setTimeout(() => pollForAddress(nonce), 2000); // Retry
+      setTimeout(() => pollForAddress(nonce), 2000); // Retry every 2 seconds
       return;
     }
     const data = await response.json();
     if (data.address) {
       connectedAddress = data.address;
       alert('Connected: ' + connectedAddress);
+      localStorage.removeItem('unisatNonce');
       document.getElementById('listForm').style.display = 'block';
       displayUserOrdinals();
       displayListings();
@@ -50,6 +57,14 @@ async function pollForAddress(nonce) {
     alert('Error polling address: ' + error.message);
   }
 }
+
+// Check for stored nonce on page load (for mobile redirect)
+window.addEventListener('load', () => {
+  const nonce = localStorage.getItem('unisatNonce');
+  if (nonce) {
+    pollForAddress(nonce);
+  }
+});
 
 async function displayUserOrdinals() {
   if (!connectedAddress) return;
@@ -63,7 +78,7 @@ async function displayUserOrdinals() {
     const ordinalSelect = document.getElementById('ordinalId');
     ordinalSelect.innerHTML = '<option value="">Select an Ordinal</option>';
     
-    // Extract inscriptions from each utxo
+    // Extract inscriptions from nested utxos
     utxos.forEach(utxo => {
       if (utxo.inscriptions && utxo.inscriptions.length > 0) {
         utxo.inscriptions.forEach(inscription => {
@@ -156,7 +171,7 @@ async function buyOrdinal(index) {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     if (isMobile) {
-      const deeplink = `unisat://request?method=sendBitcoin&to=${listing.seller}&amount=${satoshis}`;
+      const deeplink = `unisat://request?method=sendBitcoin&to=${listing.seller}&amount=${satoshis}&redirect=${encodeURIComponent(appUrl)}`;
       window.location.href = deeplink;
       setTimeout(async () => {
         await fetch(`${backendUrl}/buy`, {
@@ -165,7 +180,7 @@ async function buyOrdinal(index) {
           body: JSON.stringify({ index, buyer: connectedAddress })
         });
         displayListings();
-        alert('Check Unisat to confirm payment!');
+        alert('Check UniSat to confirm payment!');
       }, 5000);
     } else {
       if (typeof window.unisat !== 'undefined') {
@@ -178,7 +193,7 @@ async function buyOrdinal(index) {
         alert('Purchase successful! Transaction ID: ' + txId);
         displayListings();
       } else {
-        alert('Please install Unisat Wallet extension!');
+        alert('Please install UniSat Wallet extension!');
       }
     }
   } catch (error) {
