@@ -18,7 +18,6 @@ async function connectWallet() {
       }
       const { deeplink, nonce } = await response.json();
       window.location.href = deeplink;
-      // Poll for address (Mainnet should redirect better)
       setTimeout(() => pollForAddress(nonce), 5000);
       return;
     }
@@ -60,14 +59,20 @@ async function displayUserOrdinals() {
       const errorText = await response.text();
       throw new Error(`Failed to fetch Ordinals: ${errorText}`);
     }
-    const ordinals = await response.json();
+    const utxos = await response.json();
     const ordinalSelect = document.getElementById('ordinalId');
     ordinalSelect.innerHTML = '<option value="">Select an Ordinal</option>';
-    ordinals.forEach(ordinal => {
-      const option = document.createElement('option');
-      option.value = ordinal.inscriptionId;
-      option.text = `Ordinal #${ordinal.inscriptionId}`;
-      ordinalSelect.appendChild(option);
+    
+    // Extract inscriptions from each utxo
+    utxos.forEach(utxo => {
+      if (utxo.inscriptions && utxo.inscriptions.length > 0) {
+        utxo.inscriptions.forEach(inscription => {
+          const option = document.createElement('option');
+          option.value = inscription.inscriptionId;
+          option.text = `Ordinal #${inscription.inscriptionNumber} (${inscription.inscriptionId})`;
+          ordinalSelect.appendChild(option);
+        });
+      }
     });
   } catch (error) {
     alert('Error fetching your Ordinals: ' + error.message);
