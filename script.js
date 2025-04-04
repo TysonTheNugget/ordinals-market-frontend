@@ -24,6 +24,7 @@ async function connectWallet() {
         connectedAddress = accounts[0];
         alert('Connected: ' + connectedAddress);
         document.getElementById('listForm').style.display = 'block';
+        displayUserOrdinals();
         displayListings();
       } catch (error) {
         alert('Connection failed: ' + error.message);
@@ -44,14 +45,37 @@ function submitAddress() {
   alert('Connected: ' + connectedAddress);
   document.getElementById('manualConnect').style.display = 'none';
   document.getElementById('listForm').style.display = 'block';
+  displayUserOrdinals();
   displayListings();
 }
 
+async function displayUserOrdinals() {
+  if (!connectedAddress) return;
+  try {
+    const response = await fetch(`${backendUrl}/ordinals/${connectedAddress}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch Ordinals: ${errorText}`);
+    }
+    const ordinals = await response.json();
+    const ordinalSelect = document.getElementById('ordinalId');
+    ordinalSelect.innerHTML = '<option value="">Select an Ordinal</option>';
+    ordinals.forEach(ordinal => {
+      const option = document.createElement('option');
+      option.value = ordinal.inscriptionId;
+      option.text = `Ordinal #${ordinal.inscriptionId}`;
+      ordinalSelect.appendChild(option);
+    });
+  } catch (error) {
+    alert('Error fetching your Ordinals: ' + error.message);
+  }
+}
+
 async function listOrdinal() {
-  const ordinalId = document.getElementById('ordinalId').value;
+  const inscriptionId = document.getElementById('ordinalId').value;
   const price = document.getElementById('price').value;
-  if (!ordinalId || !price) {
-    alert('Please enter both Ordinal ID and price!');
+  if (!inscriptionId || !price) {
+    alert('Please select an Ordinal and enter a price!');
     return;
   }
 
@@ -59,14 +83,14 @@ async function listOrdinal() {
     const response = await fetch(`${backendUrl}/list`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ordinalId, price, seller: connectedAddress })
+      body: JSON.stringify({ inscriptionId, price, seller: connectedAddress })
     });
     if (!response.ok) {
       throw new Error('Failed to list item');
     }
     await response.json();
+    displayUserOrdinals(); // Refresh dropdown
     displayListings();
-    document.getElementById('ordinalId').value = '';
     document.getElementById('price').value = '';
   } catch (error) {
     alert('Error listing item: ' + error.message);
@@ -85,7 +109,7 @@ async function displayListings() {
     listings.forEach((listing, index) => {
       listingDiv.innerHTML += `
         <div>
-          <p>Ordinal ID: ${listing.ordinalId}</p>
+          <p>Ordinal ID: ${listing.inscriptionId}</p>
           <p>Price: ${listing.price} BTC</p>
           <p>Seller: ${listing.seller}</p>
           <button class="buyButton" data-index="${index}">Buy</button>
@@ -124,33 +148,25 @@ async function buyOrdinal(index) {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     if (isMobile) {
-      // Use deeplink for mobile, like local setup
       const deeplink = `unisat://request?method=sendBitcoin&to=${listing.seller}&amount=${satoshis}`;
       window.location.href = deeplink;
-      // After payment, assume success and update backend
       setTimeout(async () => {
-        const buyResponse = await fetch(`${backendUrl}/buy`, {
+        await fetch(`${backendUrl}/buy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ index, buyer: connectedAddress })
         });
-        if (!buyResponse.ok) {
-          throw new Error('Failed to complete buy');
-        }
         displayListings();
         alert('Check Unisat to confirm payment!');
       }, 5000);
     } else {
       if (typeof window.unisat !== 'undefined') {
         const txId = await window.unisat.sendBitcoin(listing.seller, satoshis);
-        const buyResponse = await fetch(`${backendUrl}/buy`, {
+        await fetch(`${backendUrl}/buy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ index, buyer: connectedAddress })
         });
-        if (!buyResponse.ok) {
-          throw new Error('Failed to complete buy');
-        }
         alert('Purchase successful! Transaction ID: ' + txId);
         displayListings();
       } else {
