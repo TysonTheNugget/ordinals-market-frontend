@@ -4,49 +4,52 @@ const backendUrl = 'https://ordinals-market-backend.onrender.com';
 async function connectWallet() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-  if (isMobile) {
-    try {
+  try {
+    if (typeof window.unisat !== 'undefined' && !isMobile) {
+      // Desktop: Use UniSat extension
+      const accounts = await window.unisat.requestAccounts();
+      connectedAddress = accounts[0];
+      alert('Connected: ' + connectedAddress);
+    } else {
+      // Mobile: Use deeplink
       const response = await fetch(`${backendUrl}/connect`);
       if (!response.ok) {
         throw new Error('Failed to fetch deeplink');
       }
-      const { deeplink } = await response.json();
+      const { deeplink, nonce } = await response.json();
       window.location.href = deeplink;
-      document.getElementById('manualConnect').style.display = 'block';
-      alert('Sign in Unisat, then paste your address here.');
-    } catch (error) {
-      alert('Failed to connect: ' + error.message);
+      // Poll for address (Mainnet should redirect better)
+      setTimeout(() => pollForAddress(nonce), 5000);
+      return;
     }
-  } else {
-    if (typeof window.unisat !== 'undefined') {
-      try {
-        const accounts = await window.unisat.requestAccounts();
-        connectedAddress = accounts[0];
-        alert('Connected: ' + connectedAddress);
-        document.getElementById('listForm').style.display = 'block';
-        displayUserOrdinals();
-        displayListings();
-      } catch (error) {
-        alert('Connection failed: ' + error.message);
-      }
-    } else {
-      alert('Please install Unisat Wallet extension!');
-    }
+    document.getElementById('listForm').style.display = 'block';
+    displayUserOrdinals();
+    displayListings();
+  } catch (error) {
+    alert('Failed to connect: ' + error.message);
   }
 }
 
-function submitAddress() {
-  const address = document.getElementById('manualAddress').value;
-  if (!address) {
-    alert('Please paste your address!');
-    return;
+async function pollForAddress(nonce) {
+  try {
+    const response = await fetch(`${backendUrl}/address/${nonce}`);
+    if (!response.ok) {
+      setTimeout(() => pollForAddress(nonce), 2000); // Retry
+      return;
+    }
+    const data = await response.json();
+    if (data.address) {
+      connectedAddress = data.address;
+      alert('Connected: ' + connectedAddress);
+      document.getElementById('listForm').style.display = 'block';
+      displayUserOrdinals();
+      displayListings();
+    } else {
+      setTimeout(() => pollForAddress(nonce), 2000);
+    }
+  } catch (error) {
+    alert('Error polling address: ' + error.message);
   }
-  connectedAddress = address;
-  alert('Connected: ' + connectedAddress);
-  document.getElementById('manualConnect').style.display = 'none';
-  document.getElementById('listForm').style.display = 'block';
-  displayUserOrdinals();
-  displayListings();
 }
 
 async function displayUserOrdinals() {
@@ -89,7 +92,7 @@ async function listOrdinal() {
       throw new Error('Failed to list item');
     }
     await response.json();
-    displayUserOrdinals(); // Refresh dropdown
+    displayUserOrdinals();
     displayListings();
     document.getElementById('price').value = '';
   } catch (error) {
@@ -179,7 +182,6 @@ async function buyOrdinal(index) {
 }
 
 document.getElementById('connectWallet').addEventListener('click', connectWallet);
-document.getElementById('submitAddress').addEventListener('click', submitAddress);
 document.getElementById('listButton').addEventListener('click', listOrdinal);
 
 displayListings();
