@@ -7,17 +7,17 @@ async function connectWallet() {
   if (isMobile) {
     try {
       const response = await fetch(`${backendUrl}/connect`);
-      const text = await response.text(); // Get raw response
+      const text = await response.text();
       console.log('Raw connect response:', text);
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}, Body: ${text}`);
       }
-      const { deeplink, nonce } = JSON.parse(text); // Parse after logging
+      const { deeplink, nonce } = JSON.parse(text);
       window.location.href = deeplink;
+      localStorage.setItem('lastNonce', nonce); // Store nonce for manual return
       setTimeout(() => {
-        alert('After connecting in Unisat, return here and wait a moment.');
-        checkAddress(nonce);
-      }, 5000);
+        alert('After signing in Unisat, return to this page manually.');
+      }, 2000);
     } catch (error) {
       alert('Failed to connect: ' + error.message);
       console.error('Connection error:', error);
@@ -45,7 +45,7 @@ async function checkAddress(nonce) {
     const text = await response.text();
     console.log('Raw address response:', text);
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
+      throw new Error(`HTTP error! Status: ${response.status}, Body: ${text}`);
     }
     const data = JSON.parse(text);
     if (data.address) {
@@ -53,6 +53,7 @@ async function checkAddress(nonce) {
       alert('Connected: ' + connectedAddress);
       document.getElementById('listForm').style.display = 'block';
       displayListings();
+      localStorage.removeItem('lastNonce');
     } else {
       setTimeout(() => checkAddress(nonce), 2000);
     }
@@ -60,6 +61,12 @@ async function checkAddress(nonce) {
     alert('Error checking address: ' + error.message);
     console.error('Address check error:', error);
   }
+}
+
+// Check for stored nonce on page load
+const lastNonce = localStorage.getItem('lastNonce');
+if (lastNonce) {
+  checkAddress(lastNonce);
 }
 
 async function listOrdinal() {
