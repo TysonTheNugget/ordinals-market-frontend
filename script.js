@@ -1,34 +1,33 @@
 let connectedAddress = null;
 const backendUrl = 'https://ordinals-market-backend.onrender.com';
-const appUrl = 'https://ordinals-market-frontend.vercel.app'; // Your Vercel URL
+const appUrl = 'https://ordinals-market-frontend.vercel.app';
+let allInscriptions = [];
+let cursor = 0;
+const pageSize = 20;
 
 async function connectWallet() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   try {
     if (typeof window.unisat !== 'undefined' && !isMobile) {
-      // Desktop: Use UniSat extension
       const accounts = await window.unisat.requestAccounts();
       connectedAddress = accounts[0];
       alert('Connected: ' + connectedAddress);
     } else {
-      // Mobile: Use deeplink with redirect
       const response = await fetch(`${backendUrl}/connect`);
       if (!response.ok) {
         throw new Error('Failed to fetch deeplink');
       }
       const { deeplink, nonce } = await response.json();
       window.location.href = deeplink;
-      // Store nonce for polling
       localStorage.setItem('unisatNonce', nonce);
-      // Poll after delay
       if (isMobile) {
         setTimeout(() => pollForAddress(nonce), 5000);
       }
       return;
     }
     document.getElementById('listForm').style.display = 'block';
-    displayUserOrdinals();
+    fetchAllInscriptions();
     displayListings();
   } catch (error) {
     alert('Failed to connect: ' + error.message);
@@ -39,7 +38,7 @@ async function pollForAddress(nonce) {
   try {
     const response = await fetch(`${backendUrl}/address/${nonce}`);
     if (!response.ok) {
-      setTimeout(() => pollForAddress(nonce), 2000); // Retry every 2 seconds
+      setTimeout(() => pollForAddress(nonce), 2000);
       return;
     }
     const data = await response.json();
@@ -48,7 +47,7 @@ async function pollForAddress(nonce) {
       alert('Connected: ' + connectedAddress);
       localStorage.removeItem('unisatNonce');
       document.getElementById('listForm').style.display = 'block';
-      displayUserOrdinals();
+      fetchAllInscriptions();
       displayListings();
     } else {
       setTimeout(() => pollForAddress(nonce), 2000);
@@ -58,7 +57,6 @@ async function pollForAddress(nonce) {
   }
 }
 
-// Check for stored nonce on page load (for mobile redirect)
 window.addEventListener('load', () => {
   const nonce = localStorage.getItem('unisatNonce');
   if (nonce) {
@@ -66,32 +64,44 @@ window.addEventListener('load', () => {
   }
 });
 
-async function displayUserOrdinals() {
+async function fetchAllInscriptions() {
   if (!connectedAddress) return;
+  allInscriptions = [];
+  cursor = 0;
+  let hasMore = true;
+
   try {
-    const response = await fetch(`${backendUrl}/ordinals/${connectedAddress}`);
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch Ordinals: ${errorText}`);
-    }
-    const utxos = await response.json();
-    const ordinalSelect = document.getElementById('ordinalId');
-    ordinalSelect.innerHTML = '<option value="">Select an Ordinal</option>';
-    
-    // Extract inscriptions from nested utxos
-    utxos.forEach(utxo => {
-      if (utxo.inscriptions && utxo.inscriptions.length > 0) {
-        utxo.inscriptions.forEach(inscription => {
-          const option = document.createElement('option');
-          option.value = inscription.inscriptionId;
-          option.text = `Ordinal #${inscription.inscriptionNumber} (${inscription.inscriptionId})`;
-          ordinalSelect.appendChild(option);
-        });
+    while (hasMore) {
+      const response = await fetch(`${backendUrl}/ordinals/${connectedAddress}?cursor=${cursor}&size=${pageSize}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch Ordinals: ${errorText}`);
       }
-    });
+      const data = await response.json();
+      const utxos = data.inscriptions || [];
+      utxos.forEach(utxo => {
+        if (utxo.inscriptions && utxo.inscriptions.length > 0) {
+          allInscriptions.push(...utxo.inscriptions);
+        }
+      });
+      cursor += pageSize;
+      hasMore = allInscriptions.length < data.total;
+    }
+    displayUserOrdinals();
   } catch (error) {
     alert('Error fetching your Ordinals: ' + error.message);
   }
+}
+
+function displayUserOrdinals() {
+  const ordinalSelect = document.getElementById('ordinalId');
+  ordinalSelect.innerHTML = '<option value="">Select an Ordinal</option>';
+  allInscriptions.forEach(inscription => {
+    const option = document.createElement('option');
+    option.value = inscription.inscriptionId;
+    option.text = `Ordinal #${inscription.inscriptionNumber} (${inscription.inscriptionId})`;
+    ordinalSelect.appendChild(option);
+  });
 }
 
 async function listOrdinal() {
@@ -112,7 +122,7 @@ async function listOrdinal() {
       throw new Error('Failed to list item');
     }
     await response.json();
-    displayUserOrdinals();
+    fetchAllInscriptions(); // Refresh after listing
     displayListings();
     document.getElementById('price').value = '';
   } catch (error) {
