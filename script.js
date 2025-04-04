@@ -7,6 +7,11 @@ async function connectWallet() {
   if (isMobile) {
     try {
       const response = await fetch(`${backendUrl}/connect`);
+      if (!response.ok) {
+        const text = await response.text();
+        console.log('Backend response:', text);
+        throw new Error(`HTTP error! Status: ${response.status}, Body: ${text}`);
+      }
       const { deeplink, nonce } = await response.json();
       window.location.href = deeplink;
       setTimeout(() => {
@@ -15,6 +20,7 @@ async function connectWallet() {
       }, 5000);
     } catch (error) {
       alert('Failed to connect: ' + error.message);
+      console.error('Connection error:', error);
     }
   } else {
     if (typeof window.unisat !== 'undefined') {
@@ -36,6 +42,11 @@ async function connectWallet() {
 async function checkAddress(nonce) {
   try {
     const response = await fetch(`${backendUrl}/address/${nonce}`);
+    if (!response.ok) {
+      const text = await response.text();
+      console.log('Address check response:', text);
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
     const data = await response.json();
     if (data.address) {
       connectedAddress = data.address;
@@ -47,6 +58,7 @@ async function checkAddress(nonce) {
     }
   } catch (error) {
     alert('Error checking address: ' + error.message);
+    console.error('Address check error:', error);
   }
 }
 
