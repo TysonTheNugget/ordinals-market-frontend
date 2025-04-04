@@ -7,12 +7,12 @@ async function connectWallet() {
   if (isMobile) {
     try {
       const response = await fetch(`${backendUrl}/connect`);
+      const text = await response.text(); // Get raw response
+      console.log('Raw connect response:', text);
       if (!response.ok) {
-        const text = await response.text();
-        console.log('Backend response:', text);
         throw new Error(`HTTP error! Status: ${response.status}, Body: ${text}`);
       }
-      const { deeplink, nonce } = await response.json();
+      const { deeplink, nonce } = JSON.parse(text); // Parse after logging
       window.location.href = deeplink;
       setTimeout(() => {
         alert('After connecting in Unisat, return here and wait a moment.');
@@ -42,12 +42,12 @@ async function connectWallet() {
 async function checkAddress(nonce) {
   try {
     const response = await fetch(`${backendUrl}/address/${nonce}`);
+    const text = await response.text();
+    console.log('Raw address response:', text);
     if (!response.ok) {
-      const text = await response.text();
-      console.log('Address check response:', text);
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
-    const data = await response.json();
+    const data = JSON.parse(text);
     if (data.address) {
       connectedAddress = data.address;
       alert('Connected: ' + connectedAddress);
