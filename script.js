@@ -1,5 +1,5 @@
 let connectedAddress = null;
-const backendUrl = 'https://ordinals-market-backend.onrender.com'; // Your Render URL
+const backendUrl = 'https://ordinals-market-backend.onrender.com';
 
 async function connectWallet() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -7,19 +7,15 @@ async function connectWallet() {
   if (isMobile) {
     try {
       const response = await fetch(`${backendUrl}/connect`);
-      const text = await response.text();
-      console.log('Raw connect response:', text);
       if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}, Body: ${text}`);
+        throw new Error('Failed to fetch deeplink');
       }
-      const { deeplink, nonce } = JSON.parse(text);
+      const { deeplink } = await response.json();
       window.location.href = deeplink;
-      localStorage.setItem('lastNonce', nonce);
-      document.getElementById('checkConnection').style.display = 'block';
-      alert('Sign in Unisat, then return here and click "Check Connection".');
+      document.getElementById('manualConnect').style.display = 'block';
+      alert('Sign in Unisat, then paste your address here.');
     } catch (error) {
       alert('Failed to connect: ' + error.message);
-      console.error('Connection error:', error);
     }
   } else {
     if (typeof window.unisat !== 'undefined') {
@@ -38,34 +34,17 @@ async function connectWallet() {
   }
 }
 
-async function checkConnection() {
-  const nonce = localStorage.getItem('lastNonce');
-  if (!nonce) {
-    alert('No connection attempt found. Try connecting again.');
+function submitAddress() {
+  const address = document.getElementById('manualAddress').value;
+  if (!address) {
+    alert('Please paste your address!');
     return;
   }
-  try {
-    const response = await fetch(`${backendUrl}/address/${nonce}`);
-    const text = await response.text();
-    console.log('Raw address response:', text);
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}, Body: ${text}`);
-    }
-    const data = JSON.parse(text);
-    if (data.address) {
-      connectedAddress = data.address;
-      alert('Connected: ' + connectedAddress);
-      document.getElementById('listForm').style.display = 'block';
-      document.getElementById('checkConnection').style.display = 'none';
-      localStorage.removeItem('lastNonce');
-      displayListings();
-    } else {
-      alert('Address not found yet. Try again in a moment.');
-    }
-  } catch (error) {
-    alert('Error checking address: ' + error.message);
-    console.error('Address check error:', error);
-  }
+  connectedAddress = address;
+  alert('Connected: ' + connectedAddress);
+  document.getElementById('manualConnect').style.display = 'none';
+  document.getElementById('listForm').style.display = 'block';
+  displayListings();
 }
 
 async function listOrdinal() {
@@ -76,37 +55,51 @@ async function listOrdinal() {
     return;
   }
 
-  const response = await fetch(`${backendUrl}/list`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ordinalId, price, seller: connectedAddress })
-  });
-  await response.json();
-  displayListings();
-  document.getElementById('ordinalId').value = '';
-  document.getElementById('price').value = '';
+  try {
+    const response = await fetch(`${backendUrl}/list`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ordinalId, price, seller: connectedAddress })
+    });
+    if (!response.ok) {
+      throw new Error('Failed to list item');
+    }
+    await response.json();
+    displayListings();
+    document.getElementById('ordinalId').value = '';
+    document.getElementById('price').value = '';
+  } catch (error) {
+    alert('Error listing item: ' + error.message);
+  }
 }
 
 async function displayListings() {
-  const response = await fetch(`${backendUrl}/listings`);
-  const listings = await response.json();
-  const listingDiv = document.getElementById('listing');
-  listingDiv.innerHTML = '';
-  listings.forEach((listing, index) => {
-    listingDiv.innerHTML += `
-      <div>
-        <p>Ordinal ID: ${listing.ordinalId}</p>
-        <p>Price: ${listing.price} BTC</p>
-        <p>Seller: ${listing.seller}</p>
-        <button class="buyButton" data-index="${index}">Buy</button>
-      </div>
-      <hr>
-    `;
-  });
+  try {
+    const response = await fetch(`${backendUrl}/listings`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch listings');
+    }
+    const listings = await response.json();
+    const listingDiv = document.getElementById('listing');
+    listingDiv.innerHTML = '';
+    listings.forEach((listing, index) => {
+      listingDiv.innerHTML += `
+        <div>
+          <p>Ordinal ID: ${listing.ordinalId}</p>
+          <p>Price: ${listing.price} BTC</p>
+          <p>Seller: ${listing.seller}</p>
+          <button class="buyButton" data-index="${index}">Buy</button>
+        </div>
+        <hr>
+      `;
+    });
 
-  document.querySelectorAll('.buyButton').forEach(button => {
-    button.addEventListener('click', () => buyOrdinal(button.getAttribute('data-index')));
-  });
+    document.querySelectorAll('.buyButton').forEach(button => {
+      button.addEventListener('click', () => buyOrdinal(button.getAttribute('data-index')));
+    });
+  } catch (error) {
+    alert('Error displaying listings: ' + error.message);
+  }
 }
 
 async function buyOrdinal(index) {
@@ -115,42 +108,62 @@ async function buyOrdinal(index) {
     return;
   }
 
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (isMobile) {
-    const response = await fetch(`${backendUrl}/buy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ index, buyer: connectedAddress })
-    });
-    const { deeplink } = await response.json();
-    window.location.href = deeplink;
-    setTimeout(displayListings, 5000);
-  } else {
+  try {
     const response = await fetch(`${backendUrl}/listings`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch listings');
+    }
     const listings = await response.json();
     const listing = listings[index];
-    if (typeof window.unisat !== 'undefined') {
-      try {
-        const satoshis = Math.floor(listing.price * 100000000);
-        const txId = await window.unisat.sendBitcoin(listing.seller, satoshis);
-        await fetch(`${backendUrl}/buy`, {
+    if (!listing) {
+      alert('Item not found!');
+      return;
+    }
+
+    const satoshis = Math.floor(listing.price * 100000000);
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      // Use deeplink for mobile, like local setup
+      const deeplink = `unisat://request?method=sendBitcoin&to=${listing.seller}&amount=${satoshis}`;
+      window.location.href = deeplink;
+      // After payment, assume success and update backend
+      setTimeout(async () => {
+        const buyResponse = await fetch(`${backendUrl}/buy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ index, buyer: connectedAddress })
         });
+        if (!buyResponse.ok) {
+          throw new Error('Failed to complete buy');
+        }
+        displayListings();
+        alert('Check Unisat to confirm payment!');
+      }, 5000);
+    } else {
+      if (typeof window.unisat !== 'undefined') {
+        const txId = await window.unisat.sendBitcoin(listing.seller, satoshis);
+        const buyResponse = await fetch(`${backendUrl}/buy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ index, buyer: connectedAddress })
+        });
+        if (!buyResponse.ok) {
+          throw new Error('Failed to complete buy');
+        }
         alert('Purchase successful! Transaction ID: ' + txId);
         displayListings();
-      } catch (error) {
-        alert('Purchase failed: ' + error.message);
+      } else {
+        alert('Please install Unisat Wallet extension!');
       }
-    } else {
-      alert('Please install Unisat Wallet extension!');
     }
+  } catch (error) {
+    alert('Error buying item: ' + error.message);
   }
 }
 
 document.getElementById('connectWallet').addEventListener('click', connectWallet);
-document.getElementById('checkConnection').addEventListener('click', checkConnection);
+document.getElementById('submitAddress').addEventListener('click', submitAddress);
 document.getElementById('listButton').addEventListener('click', listOrdinal);
 
 displayListings();

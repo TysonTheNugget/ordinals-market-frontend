@@ -7,7 +7,10 @@
 <body>
   <h1>My Ordinals Market</h1>
   <button id="connectWallet">Connect Wallet</button>
-  <button id="checkConnection" style="display:none;">Check Connection</button>
+  <div id="manualConnect" style="display:none;">
+    <input type="text" id="manualAddress" placeholder="Paste your address from Unisat">
+    <button id="submitAddress">Submit Address</button>
+  </div>
   <div id="listForm" style="display:none;">
     <h2>List an Ordinal</h2>
     <input type="text" id="ordinalId" placeholder="Ordinal ID (e.g., inscription #)">
