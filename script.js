@@ -14,10 +14,9 @@ async function connectWallet() {
       }
       const { deeplink, nonce } = JSON.parse(text);
       window.location.href = deeplink;
-      localStorage.setItem('lastNonce', nonce); // Store nonce for manual return
-      setTimeout(() => {
-        alert('After signing in Unisat, return to this page manually.');
-      }, 2000);
+      localStorage.setItem('lastNonce', nonce);
+      document.getElementById('checkConnection').style.display = 'block';
+      alert('Sign in Unisat, then return here and click "Check Connection".');
     } catch (error) {
       alert('Failed to connect: ' + error.message);
       console.error('Connection error:', error);
@@ -39,7 +38,12 @@ async function connectWallet() {
   }
 }
 
-async function checkAddress(nonce) {
+async function checkConnection() {
+  const nonce = localStorage.getItem('lastNonce');
+  if (!nonce) {
+    alert('No connection attempt found. Try connecting again.');
+    return;
+  }
   try {
     const response = await fetch(`${backendUrl}/address/${nonce}`);
     const text = await response.text();
@@ -52,21 +56,16 @@ async function checkAddress(nonce) {
       connectedAddress = data.address;
       alert('Connected: ' + connectedAddress);
       document.getElementById('listForm').style.display = 'block';
-      displayListings();
+      document.getElementById('checkConnection').style.display = 'none';
       localStorage.removeItem('lastNonce');
+      displayListings();
     } else {
-      setTimeout(() => checkAddress(nonce), 2000);
+      alert('Address not found yet. Try again in a moment.');
     }
   } catch (error) {
     alert('Error checking address: ' + error.message);
     console.error('Address check error:', error);
   }
-}
-
-// Check for stored nonce on page load
-const lastNonce = localStorage.getItem('lastNonce');
-if (lastNonce) {
-  checkAddress(lastNonce);
 }
 
 async function listOrdinal() {
@@ -151,6 +150,7 @@ async function buyOrdinal(index) {
 }
 
 document.getElementById('connectWallet').addEventListener('click', connectWallet);
+document.getElementById('checkConnection').addEventListener('click', checkConnection);
 document.getElementById('listButton').addEventListener('click', listOrdinal);
 
 displayListings();
